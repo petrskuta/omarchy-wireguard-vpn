@@ -1,0 +1,173 @@
+#!/bin/bash
+
+# WireGuard VPN helper for the wireguard bar widget. Backed by NetworkManager,
+# so no wg-tools or sudo are needed. Manages a single WireGuard profile: the
+# first wireguard-type connection NetworkManager knows about.
+#
+#   wireguard-vpn status         key=value lines describing the profile
+#   wireguard-vpn up|down|toggle connect/disconnect (the widget notifies)
+#   wireguard-vpn import <file>  replace the profile with a wg-quick .conf
+#   wireguard-vpn remove         delete the profile
+
+set -uo pipefail
+
+GLYPH_ON="󰦝"
+GLYPH_OFF="󰒙"
+GLYPH_ERR="󰻍"
+
+notify() {
+  omarchy-notification-send --app-name "WireGuard" "$@" >/dev/null 2>&1 || true
+}
+
+profile_uuid() {
+  nmcli -t -f UUID,TYPE connection show 2>/dev/null | awk -F: '$2 == "wireguard" { print $1; exit }'
+}
+
+profile_name() {
+  nmcli -g connection.id connection show uuid "$1" 2>/dev/null
+}
+
+profile_state() {
+  nmcli -g GENERAL.STATE connection show uuid "$1" 2>/dev/null
+}
+
+require_profile() {
+  uuid=$(profile_uuid)
+  if [[ -z $uuid ]]; then
+    echo "No WireGuard profile imported" >&2
+    exit 1
+  fi
+  name=$(profile_name "$uuid")
+}
+
+cmd_status() {
+  local uuid name state device peers endpoint full rx=0 tx=0
+  uuid=$(profile_uuid)
+  if [[ -z $uuid ]]; then
+    echo "profile=0"
+    return
+  fi
+
+  name=$(profile_name "$uuid")
+  state=$(profile_state "$uuid")
+  device=$(nmcli -g connection.interface-name connection show uuid "$uuid" 2>/dev/null)
+  peers=$(nmcli -g wireguard.peers connection show uuid "$uuid" 2>/dev/null)
+  endpoint=$(sed -n 's/.*endpoint=\([^ ]*\).*/\1/p' <<<"$peers" | head -n1 | sed 's/\\:/:/g')
+  full=0
+  [[ $peers == *0.0.0.0/0* ]] && full=1
+
+  if [[ -n $device && -r /sys/class/net/$device/statistics/rx_bytes ]]; then
+    rx=$(<"/sys/class/net/$device/statistics/rx_bytes")
+    tx=$(<"/sys/class/net/$device/statistics/tx_bytes")
+  fi
+
+  echo "profile=1"
+  echo "name=$name"
+  echo "uuid=$uuid"
+  echo "state=$state"
+  echo "device=$device"
+  echo "address=$(nmcli -g ipv4.addresses connection show uuid "$uuid" 2>/dev/null)"
+  echo "dns=$(nmcli -g ipv4.dns connection show uuid "$uuid" 2>/dev/null)"
+  echo "endpoint=$endpoint"
+  echo "fullTunnel=$full"
+  echo "rx=$rx"
+  echo "tx=$tx"
+}
+
+cmd_up() {
+  require_profile
+  local out
+  if ! out=$(nmcli connection up uuid "$uuid" 2>&1); then
+    echo "${out#Error: }" >&2
+    exit 1
+  fi
+}
+
+cmd_down() {
+  require_profile
+  local out
+  if ! out=$(nmcli connection down uuid "$uuid" 2>&1); then
+    echo "${out#Error: }" >&2
+    exit 1
+  fi
+}
+
+cmd_toggle() {
+  local uuid
+  uuid=$(profile_uuid)
+  if [[ -n $uuid && $(profile_state "$uuid") == activat* ]]; then
+    cmd_down
+  else
+    cmd_up
+  fi
+}
+
+cmd_import() {
+  local file=${1:-}
+  if [[ -z $file ]]; then
+    file=$(omarchy-file-select --title "Import WireGuard profile" --extensions "conf") || exit 0
+    [[ -z $file ]] && exit 0
+  fi
+  if [[ ! -r $file ]]; then
+    notify -u critical -g "$GLYPH_ERR" "VPN import failed" "Cannot read $file"
+    exit 1
+  fi
+
+  # NetworkManager names the connection after the file and requires that to
+  # be a valid interface name (max 15 chars), so stage a sanitized copy.
+  local base iface out uuid old
+  base=$(basename "$file" .conf)
+  iface=$(tr -c 'A-Za-z0-9_-' '_' <<<"$base" | head -c 15)
+  iface=${iface%_}
+  [[ -z $iface ]] && iface=wg0
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+  install -m 600 "$file" "$tmpdir/$iface.conf"
+
+  old=$(nmcli -t -f UUID,TYPE connection show 2>/dev/null | awk -F: '$2 == "wireguard" { print $1 }')
+
+  if ! out=$(nmcli connection import type wireguard file "$tmpdir/$iface.conf" 2>&1); then
+    out=${out#Error: }
+    out=${out//"$tmpdir/$iface.conf"/$(basename "$file")}
+    notify -u critical -g "$GLYPH_ERR" "VPN import failed" "$out"
+    echo "$out" >&2
+    exit 1
+  fi
+
+  # Import activates the profile straight away; we want it off until asked,
+  # and never auto-connecting on boot.
+  uuid=$(sed -n 's/.*(\([0-9a-f-]\{36\}\)).*/\1/p' <<<"$out")
+  [[ -z $uuid ]] && uuid=$(profile_uuid)
+  nmcli connection modify uuid "$uuid" connection.autoconnect no >/dev/null 2>&1
+  nmcli connection down uuid "$uuid" >/dev/null 2>&1
+
+  # Single-profile widget: the new profile replaces whatever came before.
+  local u
+  for u in $old; do
+    [[ $u != "$uuid" ]] && nmcli connection delete uuid "$u" >/dev/null 2>&1
+  done
+  notify -g "$GLYPH_ON" "VPN profile imported" "$iface"
+}
+
+cmd_remove() {
+  require_profile
+  if nmcli connection delete uuid "$uuid" >/dev/null 2>&1; then
+    notify -g "$GLYPH_OFF" "VPN profile removed" "$name"
+  else
+    notify -u critical -g "$GLYPH_ERR" "VPN profile removal failed" "$name"
+    exit 1
+  fi
+}
+
+case ${1:-status} in
+status) cmd_status ;;
+up) cmd_up ;;
+down) cmd_down ;;
+toggle) cmd_toggle ;;
+import) cmd_import "${2:-}" ;;
+remove) cmd_remove ;;
+*)
+  echo "Usage: wireguard-vpn [status|up|down|toggle|import [file]|remove]" >&2
+  exit 1
+  ;;
+esac

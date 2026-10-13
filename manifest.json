@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "wireguard",
+  "name": "WireGuard VPN",
+  "version": "1.0.0",
+  "author": "pyt",
+  "license": "MIT",
+  "description": "One-profile WireGuard VPN toggle backed by NetworkManager.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "WireGuard VPN",
+    "description": "Connect or disconnect a WireGuard profile and import a .conf file.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
