@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "wireguard",
   "name": "WireGuard VPN",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "pyt",
   "license": "MIT",
   "description": "One-profile WireGuard VPN toggle backed by NetworkManager.",

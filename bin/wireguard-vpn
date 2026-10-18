@@ -54,7 +54,7 @@ cmd_status() {
   peers=$(nmcli -g wireguard.peers connection show uuid "$uuid" 2>/dev/null)
   endpoint=$(sed -n 's/.*endpoint=\([^ ]*\).*/\1/p' <<<"$peers" | head -n1 | sed 's/\\:/:/g')
   full=0
-  [[ $peers == *0.0.0.0/0* ]] && full=1
+  [[ $peers == *0.0.0.0/0* || ${peers//\\:/:} == *::/0* ]] && full=1
 
   if [[ -n $device && -r /sys/class/net/$device/statistics/rx_bytes ]]; then
     rx=$(<"/sys/class/net/$device/statistics/rx_bytes")
@@ -105,8 +105,16 @@ cmd_toggle() {
 cmd_import() {
   local file=${1:-}
   if [[ -z $file ]]; then
-    file=$(omarchy-file-select --title "Import WireGuard profile" --extensions "conf") || exit 0
-    [[ -z $file ]] && exit 0
+    # Exit 1 means nothing was picked; anything else is a chooser fault.
+    file=$(omarchy-file-select --title "Import WireGuard profile" --extensions "conf")
+    case $? in
+    0) [[ -z $file ]] && exit 0 ;;
+    1) exit 0 ;;
+    *)
+      notify -u critical -g "$GLYPH_ERR" "VPN import failed" "The file chooser could not open"
+      exit 1
+      ;;
+    esac
   fi
   if [[ ! -r $file ]]; then
     notify -u critical -g "$GLYPH_ERR" "VPN import failed" "Cannot read $file"
@@ -124,6 +132,16 @@ cmd_import() {
   trap 'rm -rf "$tmpdir"' EXIT
   install -m 600 "$file" "$tmpdir/$iface.conf"
 
+  # NetworkManager activates an imported profile before we can switch it off.
+  # Stage it with Table = off so that brief activation installs no routes (a
+  # full tunnel would otherwise grab all traffic), then restore peer routes.
+  # A profile that sets its own Table keeps it untouched.
+  local routes_off=0
+  if ! grep -qiE '^[[:space:]]*Table[[:space:]]*=' "$tmpdir/$iface.conf"; then
+    sed -i '/^[[:space:]]*\[Interface\]/a Table = off' "$tmpdir/$iface.conf"
+    routes_off=1
+  fi
+
   old=$(nmcli -t -f UUID,TYPE connection show 2>/dev/null | awk -F: '$2 == "wireguard" { print $1 }')
 
   if ! out=$(nmcli connection import type wireguard file "$tmpdir/$iface.conf" 2>&1); then
@@ -140,6 +158,7 @@ cmd_import() {
   [[ -z $uuid ]] && uuid=$(profile_uuid)
   nmcli connection modify uuid "$uuid" connection.autoconnect no >/dev/null 2>&1
   nmcli connection down uuid "$uuid" >/dev/null 2>&1
+  ((routes_off)) && nmcli connection modify uuid "$uuid" wireguard.peer-routes yes >/dev/null 2>&1
 
   # Single-profile widget: the new profile replaces whatever came before.
   local u
