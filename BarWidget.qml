@@ -13,7 +13,7 @@ Panel {
   id: root
   moduleName: "wireguard"
 
-  readonly property string helper: String(Qt.resolvedUrl("bin/wireguard-vpn")).replace(/^file:\/\//, "")
+  readonly property string helper: decodeURIComponent(String(Qt.resolvedUrl("bin/wireguard-vpn")).replace(/^file:\/\//, ""))
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -80,7 +80,8 @@ Panel {
     var nowConnected = next.profile === "1" && next.state === "activated"
     if (loaded && nowConnected !== _wasConnected && isLeader()) {
       if (nowConnected) notify("-g", glyphOn, "VPN connected", String(next.name || ""))
-      else if (next.profile === "1") notify("-g", glyphOff, "VPN disconnected", String(next.name || ""))
+      // Name the profile that was connected: replacing it swaps in a new one.
+      else if (next.profile === "1") notify("-g", glyphOff, "VPN disconnected", String(info.name || next.name || ""))
     }
     _wasConnected = nowConnected
     info = next

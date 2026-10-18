@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2 — 2026-10-18
+
+### Fixed
+
+- **Correct name when a connected profile is replaced.** Importing a new profile
+  while connected said "VPN disconnected" with the new profile's name. It now
+  names the profile that was actually disconnected.
+- **Plugin folder paths with spaces or special characters work.** The path to the
+  helper script is now decoded properly before it runs.
+
 ## 1.0.1 — 2026-10-18
 
 Checked against Omarchy 4.0.5: the widget, manifest and helper are fully compatible.
