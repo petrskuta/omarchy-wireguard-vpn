@@ -11,7 +11,7 @@ import qs.Ui
 // changes made outside it. Left click opens the panel, right click toggles.
 Panel {
   id: root
-  moduleName: "wireguard"
+  moduleName: "petrskuta.wireguard"
 
   readonly property string helper: decodeURIComponent(String(Qt.resolvedUrl("bin/wireguard-vpn")).replace(/^file:\/\//, ""))
 

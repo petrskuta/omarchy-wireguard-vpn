@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 — 2026-10-25
+
+### Changed
+
+- **The plugin ID is now `petrskuta.wireguard`** (was `wireguard`), following the
+  `author.name` convention. To upgrade an existing install, reinstall it:
+
+  ```bash
+  omarchy plugin remove wireguard --yes
+  omarchy plugin add https://github.com/petrskuta/omarchy-wireguard-vpn.git --enable
+  ```
+
+  Your imported profile is kept, because NetworkManager stores it.
+
 ## 1.0.2 — 2026-10-18
 
 ### Fixed

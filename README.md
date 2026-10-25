@@ -13,7 +13,7 @@ It doesn't need `wg-tools` or sudo.
 Use **Import profile** in the panel and pick a wg-quick `.conf` file, or run:
 
 ```bash
-~/.config/omarchy/plugins/wireguard/bin/wireguard-vpn import ~/path/to/work.conf
+~/.config/omarchy/plugins/petrskuta.wireguard/bin/wireguard-vpn import ~/path/to/work.conf
 ```
 
 The profile is stored by NetworkManager in `/etc/NetworkManager/system-connections/`
@@ -23,3 +23,9 @@ NetworkManager ignores `PreUp`/`PostUp`/`PreDown`/`PostDown` lines.
 ## CLI
 
 `bin/wireguard-vpn status | up | down | toggle | import [file] | remove`
+
+## Install
+
+```bash
+omarchy plugin add https://github.com/petrskuta/omarchy-wireguard-vpn.git --enable
+```

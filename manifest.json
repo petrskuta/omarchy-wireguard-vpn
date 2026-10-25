@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "wireguard",
+  "id": "petrskuta.wireguard",
   "name": "WireGuard VPN",
-  "version": "1.0.2",
-  "author": "pyt",
+  "version": "1.1.0",
+  "author": "Petr Skuta",
   "license": "MIT",
   "description": "One-profile WireGuard VPN toggle backed by NetworkManager.",
   "kinds": [
